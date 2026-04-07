@@ -35,6 +35,7 @@ def main(args):
         wandb.init(
             project=args.wandb_project,
             entity=args.wandb_entity,
+            name=args.wandb_name,
             config=vars(args),
         )
 
@@ -190,6 +191,7 @@ def main(args):
         dist.barrier()
 
         if (epoch + 1) % args.sample_freq == 0:
+            print(f"Sampling {args.num_samples} images for FID evaluation...")
             for i in range(args.num_samples // args.sample_batch_size):
                 b = args.sample_batch_size // dist.world_size
                 noise = fixed_noise[i * b : (i + 1) * b].to("cuda")
@@ -328,6 +330,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--wandb_project", default="tarflow", type=str, help="Wandb project name")
     parser.add_argument("--wandb_entity", default=None, type=str, help="Wandb entity (team or user)")
+    parser.add_argument("--wandb_name", default=None, type=str, help="Wandb run name")
     args = parser.parse_args()
 
     main(args)
