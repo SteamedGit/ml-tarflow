@@ -12,6 +12,8 @@ import torch.utils
 import torch.utils.data
 import torchvision as tv
 
+import wandb
+
 import transformer_flow
 import utils
 
@@ -28,6 +30,13 @@ def main(args):
     print(f"{' Config ':-^80}")
     for k, v in sorted(vars(args).items()):
         print(f"{k:32s}: {v}")
+
+    if args.wandb and dist.local_rank == 0:
+        wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            config=vars(args),
+        )
 
     fid = utils.FID(reset_real_features=False, normalize=True).to("cuda")
     fid_stats_file = args.data / f"{args.dataset}_{args.img_size}_fid_stats.pth"
@@ -168,6 +177,8 @@ def main(args):
         if dist.local_rank == 0:
             metrics.print(metrics_dict, epoch + 1)
             print("\tLayer norm", " ".join([f"{z.pow(2).mean():.4f}" for z in outputs]))
+            if args.wandb:
+                wandb.log({**metrics_dict, "epoch": epoch + 1})
             torch.save(model.state_dict(), model_ckpt_file)
             torch.save(
                 {
@@ -196,12 +207,19 @@ def main(args):
 
             if dist.local_rank == 0:
                 utils.Metrics.print({"fid": fid_score}, epoch + 1)
+                sample_path = sample_dir / f"samples_{epoch + 1:03d}.png"
                 tv.utils.save_image(
                     samples,
-                    sample_dir / f"samples_{epoch + 1:03d}.png",
+                    sample_path,
                     normalize=True,
                     nrow=16,
                 )
+                if args.wandb:
+                    wandb.log({
+                        "fid": fid_score,
+                        "samples": wandb.Image(str(sample_path)),
+                        "epoch": epoch + 1,
+                    })
             dist.barrier()
 
 
@@ -302,6 +320,14 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         help="Dry run for quick tests",
     )
+    parser.add_argument(
+        "--wandb",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Enable wandb logging",
+    )
+    parser.add_argument("--wandb_project", default="tarflow", type=str, help="Wandb project name")
+    parser.add_argument("--wandb_entity", default=None, type=str, help="Wandb entity (team or user)")
     args = parser.parse_args()
 
     main(args)
