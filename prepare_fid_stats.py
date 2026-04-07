@@ -15,7 +15,7 @@ def main(args):
     dist = utils.Distributed()
     data, _ = utils.get_data(args.dataset, args.img_size, args.data)
 
-    fid_stats_file = args.data / f'{args.dataset}_{args.img_size}_fid_stats.pth'
+    fid_stats_file = args.data / f"{args.dataset}_{args.img_size}_fid_stats.pth"
     assert not fid_stats_file.exists()
     fid = utils.FID(reset_real_features=False, normalize=True).cuda()
     dist.barrier()
@@ -24,7 +24,11 @@ def main(args):
         data, num_replicas=dist.world_size, rank=dist.local_rank, shuffle=False
     )
     data_loader = torch.utils.data.DataLoader(
-        data, sampler=data_sampler, batch_size=args.batch_size // dist.world_size, num_workers=8, drop_last=False
+        data,
+        sampler=data_sampler,
+        batch_size=args.batch_size // dist.world_size,
+        num_workers=8,
+        drop_last=False,
     )
 
     for x, _ in data_loader:
@@ -33,17 +37,26 @@ def main(args):
 
     if dist.local_rank == 0:
         torch.save(fid.state_dict(), fid_stats_file)
-        print(f'Saved FID stats file {fid_stats_file}')
+        print(f"Saved FID stats file {fid_stats_file}")
     dist.barrier()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', default='data', type=pathlib.Path, help='Path for training data')
-    parser.add_argument('--dataset', default='imagenet', choices=['imagenet', 'imagenet64', 'afhq'], help='Name of dataset')
-    parser.add_argument('--img_size', default=32, type=int, help='Image size')
-    parser.add_argument('--channel_size', default=3, type=int, help='Image channel size')
-    parser.add_argument('--batch_size', default=1024, type=int, help='Batch size')
+    parser.add_argument(
+        "--data", default="data", type=pathlib.Path, help="Path for training data"
+    )
+    parser.add_argument(
+        "--dataset",
+        default="imagenet",
+        choices=["cifar10", "imagenet", "imagenet64", "afhq"],
+        help="Name of dataset",
+    )
+    parser.add_argument("--img_size", default=32, type=int, help="Image size")
+    parser.add_argument(
+        "--channel_size", default=3, type=int, help="Image channel size"
+    )
+    parser.add_argument("--batch_size", default=1024, type=int, help="Batch size")
     args = parser.parse_args()
 
     main(args)
