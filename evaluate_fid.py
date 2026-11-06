@@ -123,7 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('--logdir', default='runs', type=pathlib.Path, help='Path for artifacts')
 
     parser.add_argument('--ckpt_file', default='', type=str, help='Path for checkpoint for evaluation')
-    parser.add_argument('--dataset', default='imagenet', type=str, choices=['imagenet', 'imagenet64', 'afhq'], help='Name of dataset')
+    parser.add_argument('--dataset', default='imagenet', type=str, choices=['cifar10', 'imagenet', 'imagenet64', 'afhq'], help='Name of dataset')
     parser.add_argument('--img_size', default=32, type=int, help='Image size')
     parser.add_argument('--channel_size', default=3, type=int, help='Image channel size')
 
