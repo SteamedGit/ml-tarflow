@@ -1,5 +1,7 @@
-torch==2.5.1
-torchvision==0.20.1
+# CUDA 12.8 wheels support Blackwell GPUs (sm_120).
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.1+cu128
+torchvision==0.22.1+cu128
 jupyter>=1.0.0
 torch-fidelity==0.3.0
 torchmetrics==1.6.0
