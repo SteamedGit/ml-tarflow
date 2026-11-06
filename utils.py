@@ -137,7 +137,7 @@ class Metrics:
 
 
 def get_num_classes(dataset: str) -> int:
-    return {"cifar10": 0, "imagenet64": 0, "imagenet": 1000, "afhq": 3}[dataset]
+    return {"cifar10": 10, "imagenet64": 0, "imagenet": 1000, "afhq": 3}[dataset]
 
 
 def get_data(
