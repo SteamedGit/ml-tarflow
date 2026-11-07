@@ -181,13 +181,18 @@ def main(args):
             if args.wandb:
                 wandb.log({**metrics_dict, "epoch": epoch + 1})
             torch.save(model.state_dict(), model_ckpt_file)
-            torch.save(
-                {
-                    "optimizer": optimizer.state_dict(),
-                    "lr_schedule": lr_schedule.state_dict(),
-                },
-                opt_ckpt_file,
-            )
+            opt_state = {
+                "optimizer": optimizer.state_dict(),
+                "lr_schedule": lr_schedule.state_dict(),
+            }
+            torch.save(opt_state, opt_ckpt_file)
+            if args.save_eval_checkpoints and (epoch + 1) % args.sample_freq == 0:
+                prefix = f"eval_epoch_{epoch + 1:04d}_"
+                eval_model_ckpt_file = model_ckpt_file.with_name(prefix + model_ckpt_file.name)
+                eval_opt_ckpt_file = opt_ckpt_file.with_name(prefix + opt_ckpt_file.name)
+                torch.save(model.state_dict(), eval_model_ckpt_file)
+                torch.save(opt_state, eval_opt_ckpt_file)
+                print(f"Saved evaluation checkpoints: {eval_model_ckpt_file}, {eval_opt_ckpt_file}")
         dist.barrier()
 
         if (epoch + 1) % args.sample_freq == 0:
@@ -287,6 +292,12 @@ if __name__ == "__main__":
         default=1,
         type=int,
         help="Frequency of sampling in terms of epochs",
+    )
+    parser.add_argument(
+        "--save_eval_checkpoints",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Save additional epoch-named model and optimizer checkpoints before each FID evaluation",
     )
     parser.add_argument(
         "--num_samples", default=4096, type=int, help="Number of sampels to draw"
