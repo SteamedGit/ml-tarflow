@@ -20,6 +20,8 @@ import utils
 
 def main(args):
     dist = utils.Distributed()
+    if args.sample_batch_size <= 0 or args.sample_batch_size % dist.world_size:
+        raise ValueError("--sample_batch_size must be a positive multiple of the world size")
     utils.set_random_seed(100 + dist.rank)
     data, num_classes = utils.get_data(args.dataset, args.img_size, args.data)
 
@@ -52,13 +54,15 @@ def main(args):
         )
     dist.barrier()
 
+    # Pad equally across ranks for all-gather, then trim the final gathered batch.
+    samples_per_rank = (args.num_samples + dist.world_size - 1) // dist.world_size
     fixed_noise = torch.randn(
-        args.num_samples // dist.world_size,
+        samples_per_rank,
         (args.img_size // args.patch_size) ** 2,
         args.channel_size * args.patch_size**2,
     )
     if num_classes:
-        fixed_y = torch.randint(num_classes, (args.num_samples // dist.world_size,))
+        fixed_y = torch.randint(num_classes, (samples_per_rank,))
     else:
         fixed_y = None
     data_sampler = torch.utils.data.DistributedSampler(
@@ -134,6 +138,9 @@ def main(args):
 
     print(f"{' Training ':-^80}")
     for epoch in range(args.epochs):
+        evaluate_this_epoch = (epoch + 1) % args.sample_freq == 0 or (
+            args.eval_at_end and epoch + 1 == args.epochs
+        )
         metrics = utils.Metrics()
         for x, y in data_loader:
             x = x.cuda()
@@ -186,7 +193,7 @@ def main(args):
                 "lr_schedule": lr_schedule.state_dict(),
             }
             torch.save(opt_state, opt_ckpt_file)
-            if args.save_eval_checkpoints and (epoch + 1) % args.sample_freq == 0:
+            if args.save_eval_checkpoints and evaluate_this_epoch:
                 prefix = f"eval_epoch_{epoch + 1:04d}_"
                 eval_model_ckpt_file = model_ckpt_file.with_name(prefix + model_ckpt_file.name)
                 eval_opt_ckpt_file = opt_ckpt_file.with_name(prefix + opt_ckpt_file.name)
@@ -195,17 +202,18 @@ def main(args):
                 print(f"Saved evaluation checkpoints: {eval_model_ckpt_file}, {eval_opt_ckpt_file}")
         dist.barrier()
 
-        if (epoch + 1) % args.sample_freq == 0:
+        if evaluate_this_epoch:
             print(f"Sampling {args.num_samples} images for FID evaluation...")
-            for i in range(args.num_samples // args.sample_batch_size):
-                b = args.sample_batch_size // dist.world_size
-                noise = fixed_noise[i * b : (i + 1) * b].to("cuda")
-                y = None if fixed_y is None else fixed_y[i * b : (i + 1) * b].to("cuda")
+            b = args.sample_batch_size // dist.world_size
+            for i in range(0, samples_per_rank, b):
+                noise = fixed_noise[i : i + b].to("cuda")
+                y = None if fixed_y is None else fixed_y[i : i + b].to("cuda")
                 with torch.no_grad():
                     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                         samples = model.reverse(noise, y, guidance=args.cfg)
                         assert isinstance(samples, torch.Tensor)
                     samples = dist.gather_concat(samples)
+                    samples = samples[: args.num_samples - i * dist.world_size]
                     fid.update(0.5 * (samples.clip(min=-1, max=1) + 1), real=False)
                 if args.dry_run:
                     break
@@ -292,6 +300,12 @@ if __name__ == "__main__":
         default=1,
         type=int,
         help="Frequency of sampling in terms of epochs",
+    )
+    parser.add_argument(
+        "--eval_at_end",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Also run FID evaluation at the final epoch, regardless of --sample_freq",
     )
     parser.add_argument(
         "--save_eval_checkpoints",
